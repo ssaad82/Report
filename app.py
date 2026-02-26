@@ -1,120 +1,119 @@
 import streamlit as st
-import pandas as pd
 import sdmx
+import pandas as pd
 
-st.set_page_config(page_title="IMF Data Dashboard", layout="wide")
+st.set_page_config(page_title="Global Macro Dashboard", layout="wide")
 
-st.title("IMF Data Dashboard (SDMX)")
+st.title("🌍 Global Macro Dashboard (IMF WEO)")
+st.caption("Source: IMF World Economic Outlook (WEO)")
 
-# ---------------------------------------
-# IMF Client
-# ---------------------------------------
-IMF_DATA = sdmx.Client("IMF_DATA")
+# ---- Year Range ----
+col1, col2 = st.columns(2)
 
+with col1:
+    start_year = st.number_input(
+        "Start Year",
+        min_value=1980,
+        max_value=2030,
+        value=2015,
+        step=1
+    )
 
-# ---------------------------------------
-# Data Fetch Function
-# ---------------------------------------
+with col2:
+    end_year = st.number_input(
+        "End Year",
+        min_value=1980,
+        max_value=2030,
+        value=2025,
+        step=1
+    )
+
+# ---- Indicators ----
+indicators = {
+    "Brent Oil ($/bbl)": "G001.POILBRE.A",
+    "LNG Asia ($/MMBtu)": "G001.PNGASJP.A",
+    "Food & Beverage Index": "G001.PFANDBW.A",
+    "Food Price Index": "G001.PFOODW.A",
+    "Wheat ($/MT)": "G001.PWHEAMT.A"
+}
+
+selected_indicators = st.multiselect(
+    "Select Indicators",
+    options=list(indicators.keys()),
+    default=["Brent Oil ($/bbl)"]
+)
+
+# ---- Cache IMF Client ----
+@st.cache_resource
+def get_imf_client():
+    return sdmx.Client("IMF_DATA")
+
+# ---- Fetch Time Series (Correct for new sdmx) ----
 @st.cache_data
-def fetch_time_series(dataset, key, start_year, end_year):
+def fetch_time_series(full_key, start_year, end_year):
+
+    IMF = get_imf_client()
 
     try:
-        data_msg = IMF_DATA.data(
-            dataset,
-            key=key,
+        data_msg = IMF.data(
+            resource_id="WEO",
+            key=full_key,
             params={
                 "startPeriod": str(start_year),
                 "endPeriod": str(end_year)
             }
         )
 
-        df = data_msg.to_pandas()
+        # Extract first dataset
+        dataset = data_msg.data[0]
+
+        # Convert dataset to pandas
+        df = sdmx.to_pandas(dataset)
 
         if df is None or len(df) == 0:
             return None
 
-        # If Series
-        if isinstance(df, pd.Series):
+        # Flatten MultiIndex if needed
+        if isinstance(df.index, pd.MultiIndex):
+            df.index = df.index.get_level_values("TIME_PERIOD")
 
-            # Fix MultiIndex (VERY IMPORTANT)
-            if isinstance(df.index, pd.MultiIndex):
-                df.index = df.index.get_level_values(-1)
+        # Convert DataFrame to Series
+        if isinstance(df, pd.DataFrame):
+            df = df.squeeze()
 
-            # Convert to datetime safely
-            df.index = pd.to_datetime(df.index, errors="coerce")
-            df = df.dropna()
-            df.index = df.index.year
+        df.index = df.index.astype(int)
+        df = df.sort_index()
 
-            return df.sort_index()
-
-        # If DataFrame
-        elif isinstance(df, pd.DataFrame):
-
-            if isinstance(df.index, pd.MultiIndex):
-                df.index = df.index.get_level_values(-1)
-
-            df.index = pd.to_datetime(df.index, errors="coerce")
-            df = df.dropna()
-            df.index = df.index.year
-
-            return df.sort_index()
-
-        return None
+        return df
 
     except Exception as e:
         st.error(f"Error fetching data: {e}")
         return None
 
 
-# ---------------------------------------
-# Example Indicators (WEO Dataset)
-# ---------------------------------------
-indicators = {
-    "Brent Crude Oil ($ per barrel)": "G001.POILBRE.A",
-    "Real GDP Growth (%) - World": "G001.NGDP_RPCH.A",
-    "Inflation (%) - World": "G001.PCPIPCH.A"
-}
+# ---- Main Logic ----
+if selected_indicators:
 
-dataset = "WEO"
+    combined_df = pd.DataFrame()
 
-# ---------------------------------------
-# Sidebar Controls
-# ---------------------------------------
-st.sidebar.header("Settings")
+    for name in selected_indicators:
+        full_key = indicators[name]
+        series = fetch_time_series(full_key, start_year, end_year)
 
-selected_indicators = st.sidebar.multiselect(
-    "Select Indicators",
-    list(indicators.keys()),
-    default=["Brent Crude Oil ($ per barrel)"]
-)
+        if series is not None:
+            combined_df[name] = series
 
-start_year = st.sidebar.number_input("Start Year", value=2015)
-end_year = st.sidebar.number_input("End Year", value=2025)
+    if not combined_df.empty:
 
-# ---------------------------------------
-# Fetch and Display Data
-# ---------------------------------------
-combined_df = pd.DataFrame()
+        st.success(f"Time Series from {start_year} to {end_year}")
 
-for name in selected_indicators:
-    full_key = indicators[name]
+        st.dataframe(combined_df, use_container_width=True)
 
-    series = fetch_time_series(dataset, full_key, start_year, end_year)
+        st.subheader("📈 Time Series Chart")
+        st.line_chart(combined_df)
 
-    if series is not None:
-        combined_df[name] = series
-
-
-# ---------------------------------------
-# Output
-# ---------------------------------------
-if not combined_df.empty:
-
-    st.subheader("Data Table")
-    st.dataframe(combined_df)
-
-    st.subheader("Chart")
-    st.line_chart(combined_df)
+    else:
+        st.warning("No data returned. Check dataset or years.")
 
 else:
-    st.warning("No data returned. Check dataset or years.")
+    st.info("Select at least one indicator to display data.")

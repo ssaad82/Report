@@ -23,7 +23,8 @@ if st.button("Retrieve Data"):
             "Inflation (CPI, %)": "PCPIPCH",
             "Brent Oil ($/bbl)": "POILBRE",
             "LNG Asia ($/MMBtu)": "PNGASJP",
-            "Food & Beverage Index": "PFOODBEV",
+            "Food & Beverage Index": "G001.PFANDBW.A
+",
             "Food Price Index": "PFOOD",
             "Wheat ($/MT)": "PWHEAMT"
         }

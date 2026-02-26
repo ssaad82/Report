@@ -2,18 +2,20 @@ import streamlit as st
 import sdmx
 import pandas as pd
 
+st.set_page_config(page_title="Global Macro Dashboard", layout="wide")
+
 st.title("🌍 Global Macro Dashboard (IMF WEO)")
-st.write("Source: IMF World Economic Outlook")
+st.caption("Source: IMF World Economic Outlook (WEO)")
 
 year = st.number_input(
-    "Enter Year",
+    "Select Year",
     min_value=1980,
     max_value=2030,
     value=2025,
     step=1
 )
 
-# Full SDMX keys (no string building)
+# ---- Full SDMX Keys ----
 indicators = {
     "Brent Oil ($/bbl)": "G001.POILBRE.A",
     "LNG Asia ($/MMBtu)": "G001.PNGASJP.A",
@@ -22,56 +24,70 @@ indicators = {
     "Wheat ($/MT)": "G001.PWHEAMT.A"
 }
 
-# ✅ User selects indicators
 selected_indicators = st.multiselect(
     "Select Indicators",
     options=list(indicators.keys()),
     default=["Brent Oil ($/bbl)"]
 )
 
-if st.button("Retrieve Data"):
+# ---- Cache IMF Client ----
+@st.cache_resource
+def get_imf_client():
+    return sdmx.Client("IMF")
 
-    if not selected_indicators:
-        st.warning("Please select at least one indicator.")
-    else:
-        try:
-            IMF = sdmx.Client("IMF")
-            results = []
+# ---- Cache Data Retrieval ----
+@st.cache_data
+def fetch_data(full_key, year):
+    IMF = get_imf_client()
 
-            for name in selected_indicators:
-                full_key = indicators[name]
+    data_msg = IMF.data(
+        resource_id="WEO",
+        key=full_key,
+        params={
+            "startPeriod": str(year),
+            "endPeriod": str(year)
+        }
+    )
 
-                data_msg = IMF.data(
-                    resource_id="WEO",
-                    key=full_key,
-                    params={
-                        "startPeriod": str(year),
-                        "endPeriod": str(year)
-                    }
-                )
+    df = sdmx.to_pandas(data_msg)
 
-                df = sdmx.to_pandas(data_msg)
+    if df is None or len(df) == 0:
+        return None
 
-                if df is not None and len(df) > 0:
-                    value = float(df.values[0])
-                    results.append([name, value])
-                else:
-                    results.append([name, "No data"])
+    return float(df.squeeze())
 
-            final_df = pd.DataFrame(
-                results,
-                columns=["Indicator", f"Value ({year})"]
-            )
 
-            st.success(f"Selected Indicators for {year}")
-            st.dataframe(final_df)
+if selected_indicators:
 
-            # Optional chart
-            numeric_df = final_df[final_df[f"Value ({year})"] != "No data"]
-            if not numeric_df.empty:
-                st.bar_chart(
-                    numeric_df.set_index("Indicator")
-                )
+    results = []
 
-        except Exception as e:
-            st.error(f"Error: {e}")
+    for name in selected_indicators:
+        full_key = indicators[name]
+        value = fetch_data(full_key, year)
+
+        if value is not None:
+            results.append([name, value])
+        else:
+            results.append([name, "No data"])
+
+    final_df = pd.DataFrame(
+        results,
+        columns=["Indicator", f"Value ({year})"]
+    )
+
+    st.success(f"Selected Indicators for {year}")
+    st.dataframe(final_df, use_container_width=True)
+
+    # ---- Chart ----
+    numeric_df = final_df[pd.to_numeric(
+        final_df[f"Value ({year})"], errors="coerce"
+    ).notnull()]
+
+    if not numeric_df.empty:
+        st.subheader("Visualization")
+        st.bar_chart(
+            numeric_df.set_index("Indicator")
+        )
+
+else:
+    st.info("Select at least one indicator to display data.")

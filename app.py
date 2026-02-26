@@ -48,7 +48,7 @@ selected_indicators = st.multiselect(
 def get_imf_client():
     return sdmx.Client("IMF_DATA")
 
-# ---- Fetch Time Series (Correct for new sdmx) ----
+# ---- Fetch Time Series ----
 @st.cache_data
 def fetch_time_series(full_key, start_year, end_year):
 
@@ -64,20 +64,16 @@ def fetch_time_series(full_key, start_year, end_year):
             }
         )
 
-        # Extract first dataset
         dataset = data_msg.data[0]
-
-        # Convert dataset to pandas
         df = sdmx.to_pandas(dataset)
 
         if df is None or len(df) == 0:
             return None
 
-        # Flatten MultiIndex if needed
+        # Flatten MultiIndex if necessary
         if isinstance(df.index, pd.MultiIndex):
             df.index = df.index.get_level_values("TIME_PERIOD")
 
-        # Convert DataFrame to Series
         if isinstance(df, pd.DataFrame):
             df = df.squeeze()
 
@@ -105,12 +101,24 @@ if selected_indicators:
 
     if not combined_df.empty:
 
+        combined_df = combined_df.sort_index()
+
         st.success(f"Time Series from {start_year} to {end_year}")
 
         st.dataframe(combined_df, use_container_width=True)
 
         st.subheader("📈 Time Series Chart")
         st.line_chart(combined_df)
+
+        # ---- Download Button ----
+        csv = combined_df.to_csv().encode("utf-8")
+
+        st.download_button(
+            label="📥 Download Data as CSV",
+            data=csv,
+            file_name=f"IMF_WEO_data_{start_year}_{end_year}.csv",
+            mime="text/csv"
+        )
 
     else:
         st.warning("No data returned. Check dataset or years.")

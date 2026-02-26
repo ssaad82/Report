@@ -13,46 +13,65 @@ year = st.number_input(
     step=1
 )
 
+# Full SDMX keys (no string building)
+indicators = {
+    "Brent Oil ($/bbl)": "G001.POILBRE.A",
+    "LNG Asia ($/MMBtu)": "G001.PNGASJP.A",
+    "Food & Beverage Index": "G001.PFANDBW.A",
+    "Food Price Index": "G001.PFOODW.A",
+    "Wheat ($/MT)": "G001.PWHEAMT.A"
+}
+
+# ✅ User selects indicators
+selected_indicators = st.multiselect(
+    "Select Indicators",
+    options=list(indicators.keys()),
+    default=["Brent Oil ($/bbl)"]
+)
+
 if st.button("Retrieve Data"):
 
-    try:
-        IMF = sdmx.Client("IMF")
+    if not selected_indicators:
+        st.warning("Please select at least one indicator.")
+    else:
+        try:
+            IMF = sdmx.Client("IMF")
+            results = []
 
-        indicators = {
-            "Real GDP Growth (%)": "NGDP_RPCH",
-            "Inflation (CPI, %)": "PCPIPCH",
-            "Brent Oil ($/bbl)": "POILBRE",
-            "LNG Asia ($/MMBtu)": "PNGASJP",
-            "Food & Beverage Index": "G001.PFANDBW.A
-",
-            "Food Price Index": "PFOOD",
-            "Wheat ($/MT)": "PWHEAMT"
-        }
+            for name in selected_indicators:
+                full_key = indicators[name]
 
-        results = []
+                data_msg = IMF.data(
+                    resource_id="WEO",
+                    key=full_key,
+                    params={
+                        "startPeriod": str(year),
+                        "endPeriod": str(year)
+                    }
+                )
 
-        for name, code in indicators.items():
-            data_msg = IMF.data(
-                resource_id="WEO",
-                key=f"G001.{code}.A",
-                params={
-                    "startPeriod": str(year),
-                    "endPeriod": str(year)
-                }
+                df = sdmx.to_pandas(data_msg)
+
+                if df is not None and len(df) > 0:
+                    value = float(df.values[0])
+                    results.append([name, value])
+                else:
+                    results.append([name, "No data"])
+
+            final_df = pd.DataFrame(
+                results,
+                columns=["Indicator", f"Value ({year})"]
             )
 
-            df = sdmx.to_pandas(data_msg)
+            st.success(f"Selected Indicators for {year}")
+            st.dataframe(final_df)
 
-            if not df.empty:
-                value = df.values[0]
-                results.append([name, value])
-            else:
-                results.append([name, "No data"])
+            # Optional chart
+            numeric_df = final_df[final_df[f"Value ({year})"] != "No data"]
+            if not numeric_df.empty:
+                st.bar_chart(
+                    numeric_df.set_index("Indicator")
+                )
 
-        final_df = pd.DataFrame(results, columns=["Indicator", f"Value ({year})"])
-
-        st.success(f"Global Indicators for {year}")
-        st.dataframe(final_df)
-
-    except Exception as e:
-        st.error(f"Error: {e}")
+        except Exception as e:
+            st.error(f"Error: {e}")

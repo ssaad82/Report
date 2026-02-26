@@ -7,13 +7,26 @@ st.set_page_config(page_title="Global Macro Dashboard", layout="wide")
 st.title("🌍 Global Macro Dashboard (IMF WEO)")
 st.caption("Source: IMF World Economic Outlook (WEO)")
 
-year = st.number_input(
-    "Select Year",
-    min_value=1980,
-    max_value=2030,
-    value=2025,
-    step=1
-)
+# ---- Year Range ----
+col1, col2 = st.columns(2)
+
+with col1:
+    start_year = st.number_input(
+        "Start Year",
+        min_value=1980,
+        max_value=2030,
+        value=2015,
+        step=1
+    )
+
+with col2:
+    end_year = st.number_input(
+        "End Year",
+        min_value=1980,
+        max_value=2030,
+        value=2025,
+        step=1
+    )
 
 # ---- Full SDMX Keys ----
 indicators = {
@@ -33,19 +46,19 @@ selected_indicators = st.multiselect(
 # ---- Cache IMF Client ----
 @st.cache_resource
 def get_imf_client():
-    return sdmx.Client("IMF_DATA")  # ✅ Important Fix
+    return sdmx.Client("IMF_DATA")
 
-# ---- Fetch Data ----
+# ---- Fetch Time Series ----
 @st.cache_data
-def fetch_data(full_key, year):
+def fetch_time_series(full_key, start_year, end_year):
     IMF = get_imf_client()
 
     data_msg = IMF.data(
         resource_id="WEO",
         key=full_key,
         params={
-            "startPeriod": str(year),
-            "endPeriod": str(year)
+            "startPeriod": str(start_year),
+            "endPeriod": str(end_year)
         }
     )
 
@@ -54,38 +67,36 @@ def fetch_data(full_key, year):
     if df is None or len(df) == 0:
         return None
 
-    return float(df.squeeze())
+    # Ensure proper time index
+    if isinstance(df, pd.Series):
+        df.index = df.index.astype(int)
+
+    return df
 
 
+# ---- Main Logic ----
 if selected_indicators:
 
-    results = []
+    combined_df = pd.DataFrame()
 
     for name in selected_indicators:
         full_key = indicators[name]
-        value = fetch_data(full_key, year)
+        series = fetch_time_series(full_key, start_year, end_year)
 
-        if value is not None:
-            results.append([name, value])
-        else:
-            results.append([name, "No data"])
+        if series is not None:
+            combined_df[name] = series
 
-    final_df = pd.DataFrame(
-        results,
-        columns=["Indicator", f"Value ({year})"]
-    )
+    if not combined_df.empty:
 
-    st.success(f"Selected Indicators for {year}")
-    st.dataframe(final_df, use_container_width=True)
+        st.success(f"Time Series from {start_year} to {end_year}")
 
-    # ---- Chart ----
-    numeric_df = final_df[pd.to_numeric(
-        final_df[f"Value ({year})"], errors="coerce"
-    ).notnull()]
+        st.dataframe(combined_df, use_container_width=True)
 
-    if not numeric_df.empty:
-        st.subheader("Visualization")
-        st.bar_chart(numeric_df.set_index("Indicator"))
+        st.subheader("📈 Time Series Chart")
+        st.line_chart(combined_df)
+
+    else:
+        st.warning("No data available for selected range.")
 
 else:
     st.info("Select at least one indicator to display data.")

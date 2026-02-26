@@ -33,9 +33,9 @@ selected_indicators = st.multiselect(
 # ---- Cache IMF Client ----
 @st.cache_resource
 def get_imf_client():
-    return sdmx.Client("IMF")
+    return sdmx.Client("IMF_DATA")  # ✅ Important Fix
 
-# ---- Cache Data Retrieval ----
+# ---- Fetch Data ----
 @st.cache_data
 def fetch_data(full_key, year):
     IMF = get_imf_client()
@@ -85,9 +85,7 @@ if selected_indicators:
 
     if not numeric_df.empty:
         st.subheader("Visualization")
-        st.bar_chart(
-            numeric_df.set_index("Indicator")
-        )
+        st.bar_chart(numeric_df.set_index("Indicator"))
 
 else:
     st.info("Select at least one indicator to display data.")

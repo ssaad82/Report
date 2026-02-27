@@ -3,3 +3,4 @@ sdmx1
 pandas
 lxml
 requests
+fredapi

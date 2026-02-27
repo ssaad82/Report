@@ -1,13 +1,26 @@
 import streamlit as st
 import sdmx
 import pandas as pd
+from fredapi import Fred
 
 st.set_page_config(page_title="Global Macro Dashboard", layout="wide")
 
-st.title("🌍 Global Macro Dashboard (IMF WEO)")
-st.caption("Source: IMF World Economic Outlook (WEO)")
+st.title("🌍 Global Macro Dashboard (IMF WEO + FRED)")
+st.caption("Source: IMF WEO & FRED (Federal Reserve)")
 
+# -------------------------
+# 🔐 FRED API
+# -------------------------
+FRED_API_KEY = "5a92fd06d14b346c789c0e4426aa3592"
+
+@st.cache_resource
+def get_fred_client():
+    return Fred(api_key=FRED_API_KEY)
+
+
+# -------------------------
 # ---- Year Range ----
+# -------------------------
 col1, col2 = st.columns(2)
 
 with col1:
@@ -28,7 +41,9 @@ with col2:
         step=1
     )
 
+# -------------------------
 # ---- Indicators ----
+# -------------------------
 indicators = {
     "Brent Oil ($/bbl)": "G001.POILBRE.A",
     "LNG Asia ($/MMBtu)": "G001.PNGASJP.A",
@@ -37,20 +52,29 @@ indicators = {
     "Wheat ($/MT)": "G001.PWHEAMT.A"
 }
 
+fred_indicators = {
+    "Effective Fed Funds Rate (%)": "EFFR"
+}
+
 selected_indicators = st.multiselect(
     "Select Indicators",
-    options=list(indicators.keys()),
+    options=list(indicators.keys()) + list(fred_indicators.keys()),
     default=["Brent Oil ($/bbl)"]
 )
 
-# ---- Cache IMF Client ----
+# -------------------------
+# IMF Client
+# -------------------------
 @st.cache_resource
 def get_imf_client():
     return sdmx.Client("IMF_DATA")
 
-# ---- Fetch Time Series ----
+
+# -------------------------
+# Fetch IMF Data
+# -------------------------
 @st.cache_data
-def fetch_time_series(full_key, start_year, end_year):
+def fetch_imf_series(full_key, start_year, end_year):
 
     IMF = get_imf_client()
 
@@ -70,7 +94,6 @@ def fetch_time_series(full_key, start_year, end_year):
         if df is None or len(df) == 0:
             return None
 
-        # Flatten MultiIndex if necessary
         if isinstance(df.index, pd.MultiIndex):
             df.index = df.index.get_level_values("TIME_PERIOD")
 
@@ -83,18 +106,52 @@ def fetch_time_series(full_key, start_year, end_year):
         return df
 
     except Exception as e:
-        st.error(f"Error fetching data: {e}")
+        st.error(f"IMF Error: {e}")
         return None
 
 
-# ---- Main Logic ----
+# -------------------------
+# Fetch FRED Data
+# -------------------------
+@st.cache_data
+def fetch_fred_series(series_id, start_year, end_year):
+
+    fred = get_fred_client()
+
+    try:
+        df = fred.get_series(
+            series_id,
+            observation_start=f"{start_year}-01-01",
+            observation_end=f"{end_year}-12-31"
+        )
+
+        # Convert daily to yearly average
+        df = df.resample("Y").mean()
+        df.index = df.index.year
+
+        return df
+
+    except Exception as e:
+        st.error(f"FRED Error: {e}")
+        return None
+
+
+# -------------------------
+# Main Logic
+# -------------------------
 if selected_indicators:
 
     combined_df = pd.DataFrame()
 
     for name in selected_indicators:
-        full_key = indicators[name]
-        series = fetch_time_series(full_key, start_year, end_year)
+
+        if name in indicators:
+            full_key = indicators[name]
+            series = fetch_imf_series(full_key, start_year, end_year)
+
+        elif name in fred_indicators:
+            series_id = fred_indicators[name]
+            series = fetch_fred_series(series_id, start_year, end_year)
 
         if series is not None:
             combined_df[name] = series
@@ -110,13 +167,12 @@ if selected_indicators:
         st.subheader("📈 Time Series Chart")
         st.line_chart(combined_df)
 
-        # ---- Download Button ----
         csv = combined_df.to_csv().encode("utf-8")
 
         st.download_button(
             label="📥 Download Data as CSV",
             data=csv,
-            file_name=f"IMF_WEO_data_{start_year}_{end_year}.csv",
+            file_name=f"Macro_data_{start_year}_{end_year}.csv",
             mime="text/csv"
         )
 

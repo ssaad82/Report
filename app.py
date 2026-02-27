@@ -6,12 +6,13 @@ from fredapi import Fred
 st.set_page_config(page_title="Global Macro Dashboard", layout="wide")
 
 st.title("🌍 Global Macro Dashboard (IMF WEO + FRED)")
-st.caption("Source: IMF WEO & FRED (Federal Reserve)")
+st.caption("Source: IMF WEO & FRED (Federal Reserve H.15)")
 
 # -------------------------
 # 🔐 FRED API
 # -------------------------
-# ⚠️ For production use: st.secrets["FRED_API_KEY"]
+# For production use:
+# FRED_API_KEY = st.secrets["FRED_API_KEY"]
 FRED_API_KEY = "YOUR_API_KEY_HERE"
 
 @st.cache_resource
@@ -54,13 +55,13 @@ imf_indicators = {
 }
 
 fred_indicators = {
-    "Effective Fed Funds Rate (Year-End %)": "EFFR"
+    "Effective Fed Funds Rate (Year-End, DFF %)": "DFF"
 }
 
 selected_indicators = st.multiselect(
     "Select Indicators",
     options=list(imf_indicators.keys()) + list(fred_indicators.keys()),
-    default=["Brent Oil ($/bbl)"]
+    default=["Effective Fed Funds Rate (Year-End, DFF %)"]
 )
 
 # -------------------------
@@ -72,7 +73,7 @@ def get_imf_client():
 
 
 # -------------------------
-# Fetch IMF Data (Annual)
+# Fetch IMF Data
 # -------------------------
 @st.cache_data
 def fetch_imf_series(full_key, start_year, end_year):
@@ -114,7 +115,7 @@ def fetch_imf_series(full_key, start_year, end_year):
 
 
 # -------------------------
-# Fetch FRED Data (Year-End Value)
+# Fetch FRED Data (DFF - Year-End Value)
 # -------------------------
 @st.cache_data
 def fetch_fred_series(series_id, start_year, end_year):
@@ -130,7 +131,7 @@ def fetch_fred_series(series_id, start_year, end_year):
 
         df = df.to_frame(name="value")
 
-        # Take last available value of each year (Dec 31 or last business day)
+        # Take last available observation of each year
         df_year_end = df.resample("YE").last()
 
         df_year_end.index = df_year_end.index.year

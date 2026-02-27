@@ -11,7 +11,8 @@ st.caption("Source: IMF WEO & FRED (Federal Reserve)")
 # -------------------------
 # 🔐 FRED API
 # -------------------------
-FRED_API_KEY = "5a92fd06d14b346c789c0e4426aa3592"
+# ⚠️ For production use: st.secrets["FRED_API_KEY"]
+FRED_API_KEY = "YOUR_API_KEY_HERE"
 
 @st.cache_resource
 def get_fred_client():
@@ -44,21 +45,21 @@ with col2:
 # -------------------------
 # ---- Indicators ----
 # -------------------------
-indicators = {
-    "Brent Oil ($/bbl)": "G001.POILBRE.A",
-    "LNG Asia ($/MMBtu)": "G001.PNGASJP.A",
-    "Food & Beverage Index": "G001.PFANDBW.A",
-    "Food Price Index": "G001.PFOODW.A",
-    "Wheat ($/MT)": "G001.PWHEAMT.A"
+imf_indicators = {
+    "Brent Oil ($/bbl)": "WEO.WLD.POILBRE.A",
+    "LNG Asia ($/MMBtu)": "WEO.WLD.PNGASJP.A",
+    "Food & Beverage Index": "WEO.WLD.PFANDBW.A",
+    "Food Price Index": "WEO.WLD.PFOODW.A",
+    "Wheat ($/MT)": "WEO.WLD.PWHEAMT.A"
 }
 
 fred_indicators = {
-    "Effective Fed Funds Rate (%)": "EFFR"
+    "Effective Fed Funds Rate (Year-End %)": "EFFR"
 }
 
 selected_indicators = st.multiselect(
     "Select Indicators",
-    options=list(indicators.keys()) + list(fred_indicators.keys()),
+    options=list(imf_indicators.keys()) + list(fred_indicators.keys()),
     default=["Brent Oil ($/bbl)"]
 )
 
@@ -71,7 +72,7 @@ def get_imf_client():
 
 
 # -------------------------
-# Fetch IMF Data
+# Fetch IMF Data (Annual)
 # -------------------------
 @st.cache_data
 def fetch_imf_series(full_key, start_year, end_year):
@@ -100,6 +101,8 @@ def fetch_imf_series(full_key, start_year, end_year):
         if isinstance(df, pd.DataFrame):
             df = df.squeeze()
 
+        df.index = pd.to_numeric(df.index, errors="coerce")
+        df = df.dropna()
         df.index = df.index.astype(int)
         df = df.sort_index()
 
@@ -111,7 +114,7 @@ def fetch_imf_series(full_key, start_year, end_year):
 
 
 # -------------------------
-# Fetch FRED Data
+# Fetch FRED Data (Year-End Value)
 # -------------------------
 @st.cache_data
 def fetch_fred_series(series_id, start_year, end_year):
@@ -125,11 +128,14 @@ def fetch_fred_series(series_id, start_year, end_year):
             observation_end=f"{end_year}-12-31"
         )
 
-        # Convert daily to yearly average
-        df = df.resample("Y").mean()
-        df.index = df.index.year
+        df = df.to_frame(name="value")
 
-        return df
+        # Take last available value of each year (Dec 31 or last business day)
+        df_year_end = df.resample("YE").last()
+
+        df_year_end.index = df_year_end.index.year
+
+        return df_year_end["value"]
 
     except Exception as e:
         st.error(f"FRED Error: {e}")
@@ -145,8 +151,8 @@ if selected_indicators:
 
     for name in selected_indicators:
 
-        if name in indicators:
-            full_key = indicators[name]
+        if name in imf_indicators:
+            full_key = imf_indicators[name]
             series = fetch_imf_series(full_key, start_year, end_year)
 
         elif name in fred_indicators:
@@ -154,7 +160,10 @@ if selected_indicators:
             series = fetch_fred_series(series_id, start_year, end_year)
 
         if series is not None:
-            combined_df[name] = series
+            combined_df = pd.concat(
+                [combined_df, series.rename(name)],
+                axis=1
+            )
 
     if not combined_df.empty:
 

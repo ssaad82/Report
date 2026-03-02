@@ -56,7 +56,7 @@ if end_year < start_year:
 
 imf_indicators = {
     "Brent Oil ($/bbl)": "WLD.POILBRE.IX",
-    "LNG Asia ($/MMBtu)": "WLD.PNGASJP.IX",
+    "LNG Asia ($/MMBtu)": "WLD.PNGAS.IX",
     "Food & Beverage Index": "WLD.PFANDBW.IX",
     "Food Price Index": "WLD.PFOODW.IX",
     "Wheat ($/MT)": "WLD.PWHEAMT.IX"

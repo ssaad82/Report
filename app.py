@@ -6,14 +6,14 @@ from fredapi import Fred
 st.set_page_config(page_title="Global Macro Dashboard", layout="wide")
 
 st.title("🌍 Global Macro Dashboard (IMF WEO + FRED)")
-st.caption("Source: IMF WEO & FRED (Federal Reserve H.15)")
+st.caption("Source: IMF World Economic Outlook (WEO) & FRED (Federal Reserve H.15)")
 
 # -------------------------
 # 🔐 FRED API
 # -------------------------
-# For production use:
+# For production use, store in Streamlit secrets
 # FRED_API_KEY = st.secrets["FRED_API_KEY"]
-FRED_API_KEY = "5a92fd06d14b346c789c0e4426aa3592"
+FRED_API_KEY = "YOUR_FRED_API_KEY"
 
 @st.cache_resource
 def get_fred_client():
@@ -43,15 +43,24 @@ with col2:
         step=1
     )
 
+if end_year < start_year:
+    st.error("End year must be greater than Start year.")
+    st.stop()
+
+
 # -------------------------
 # ---- Indicators ----
 # -------------------------
+# IMPORTANT:
+# Do NOT include "WEO." or ".A"
+# resource_id="WEO" already handles that
+
 imf_indicators = {
-    "Brent Oil ($/bbl)": "WEO.WLD.POILBRE.A",
-    "LNG Asia ($/MMBtu)": "WEO.WLD.PNGASJP.A",
-    "Food & Beverage Index": "WEO.WLD.PFANDBW.A",
-    "Food Price Index": "WEO.WLD.PFOODW.A",
-    "Wheat ($/MT)": "WEO.WLD.PWHEAMT.A"
+    "Brent Oil ($/bbl)": "WLD.POILBRE",
+    "LNG Asia ($/MMBtu)": "WLD.PNGASJP",
+    "Food & Beverage Index": "WLD.PFANDBW",
+    "Food Price Index": "WLD.PFOODW",
+    "Wheat ($/MT)": "WLD.PWHEAMT"
 }
 
 fred_indicators = {
@@ -64,43 +73,43 @@ selected_indicators = st.multiselect(
     default=["Effective Fed Funds Rate (Year-End, DFF %)"]
 )
 
+
 # -------------------------
 # IMF Client
 # -------------------------
 @st.cache_resource
 def get_imf_client():
-    return sdmx.Client("IMF_DATA")
+    return sdmx.Client("IMF")
 
 
 # -------------------------
-# Fetch IMF Data
+# Fetch IMF Data (WEO Annual)
 # -------------------------
 @st.cache_data
-def fetch_imf_series(full_key, start_year, end_year):
+def fetch_imf_series(key, start_year, end_year):
 
     IMF = get_imf_client()
 
     try:
         data_msg = IMF.data(
             resource_id="WEO",
-            key=full_key,
+            key=key,
             params={
                 "startPeriod": str(start_year),
                 "endPeriod": str(end_year)
             }
         )
 
-        dataset = data_msg.data[0]
-        df = sdmx.to_pandas(dataset)
+        df = sdmx.to_pandas(data_msg)
 
         if df is None or len(df) == 0:
             return None
 
+        # Extract time index
         if isinstance(df.index, pd.MultiIndex):
             df.index = df.index.get_level_values("TIME_PERIOD")
 
-        if isinstance(df, pd.DataFrame):
-            df = df.squeeze()
+        df = df.squeeze()
 
         df.index = pd.to_numeric(df.index, errors="coerce")
         df = df.dropna()
@@ -115,7 +124,7 @@ def fetch_imf_series(full_key, start_year, end_year):
 
 
 # -------------------------
-# Fetch FRED Data (DFF - Year-End Value)
+# Fetch FRED Data (Year-End Value)
 # -------------------------
 @st.cache_data
 def fetch_fred_series(series_id, start_year, end_year):
@@ -133,7 +142,6 @@ def fetch_fred_series(series_id, start_year, end_year):
 
         # Take last available observation of each year
         df_year_end = df.resample("YE").last()
-
         df_year_end.index = df_year_end.index.year
 
         return df_year_end["value"]
@@ -153,12 +161,15 @@ if selected_indicators:
     for name in selected_indicators:
 
         if name in imf_indicators:
-            full_key = imf_indicators[name]
-            series = fetch_imf_series(full_key, start_year, end_year)
+            key = imf_indicators[name]
+            series = fetch_imf_series(key, start_year, end_year)
 
         elif name in fred_indicators:
             series_id = fred_indicators[name]
             series = fetch_fred_series(series_id, start_year, end_year)
+
+        else:
+            series = None
 
         if series is not None:
             combined_df = pd.concat(

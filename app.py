@@ -11,7 +11,7 @@ st.caption("Source: IMF World Economic Outlook (WEO) & FRED (Federal Reserve H.1
 # -------------------------
 # 🔐 FRED API
 # -------------------------
-# For production use, store in Streamlit secrets
+# For production use:
 # FRED_API_KEY = st.secrets["FRED_API_KEY"]
 FRED_API_KEY = "YOUR_FRED_API_KEY"
 
@@ -51,16 +51,15 @@ if end_year < start_year:
 # -------------------------
 # ---- Indicators ----
 # -------------------------
-# IMPORTANT:
-# Do NOT include "WEO." or ".A"
-# resource_id="WEO" already handles that
+# WEO key format:
+# REF_AREA.SUBJECT.MEASURE
 
 imf_indicators = {
-    "Brent Oil ($/bbl)": "WLD.POILBRE",
-    "LNG Asia ($/MMBtu)": "WLD.PNGASJP",
-    "Food & Beverage Index": "WLD.PFANDBW",
-    "Food Price Index": "WLD.PFOODW",
-    "Wheat ($/MT)": "WLD.PWHEAMT"
+    "Brent Oil ($/bbl)": "WLD.POILBRE.IX",
+    "LNG Asia ($/MMBtu)": "WLD.PNGASJP.IX",
+    "Food & Beverage Index": "WLD.PFANDBW.IX",
+    "Food Price Index": "WLD.PFOODW.IX",
+    "Wheat ($/MT)": "WLD.PWHEAMT.IX"
 }
 
 fred_indicators = {
@@ -105,7 +104,7 @@ def fetch_imf_series(key, start_year, end_year):
         if df is None or len(df) == 0:
             return None
 
-        # Extract time index
+        # Handle multi-index
         if isinstance(df.index, pd.MultiIndex):
             df.index = df.index.get_level_values("TIME_PERIOD")
 
@@ -140,7 +139,7 @@ def fetch_fred_series(series_id, start_year, end_year):
 
         df = df.to_frame(name="value")
 
-        # Take last available observation of each year
+        # Take last observation of each year
         df_year_end = df.resample("YE").last()
         df_year_end.index = df_year_end.index.year
 

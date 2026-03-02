@@ -3,6 +3,9 @@ import sdmx
 import pandas as pd
 from fredapi import Fred
 
+# ------------------------------------------------
+# Page Config
+# ------------------------------------------------
 st.set_page_config(page_title="Global Macro Dashboard", layout="wide")
 
 st.title("🌍 Global Macro Dashboard (IMF WEO + FRED)")
@@ -11,7 +14,7 @@ st.caption("Source: IMF WEO & FRED")
 # ------------------------------------------------
 # 🔐 FRED API
 # ------------------------------------------------
-# For production:
+# For production use:
 # FRED_API_KEY = st.secrets["FRED_API_KEY"]
 FRED_API_KEY = "YOUR_FRED_API_KEY"
 
@@ -35,7 +38,7 @@ if end_year < start_year:
     st.stop()
 
 # ------------------------------------------------
-# Indicators
+# Indicators (DEFINE BEFORE USE)
 # ------------------------------------------------
 imf_indicators = {
     "Brent Oil ($/bbl)": "G001.POILBRE.A",
@@ -49,6 +52,9 @@ fred_indicators = {
     "Effective Fed Funds Rate (Year-End, DFF %)": "DFF"
 }
 
+# ------------------------------------------------
+# Indicator Selection
+# ------------------------------------------------
 selected_indicators = st.multiselect(
     "Select Indicators",
     list(imf_indicators.keys()) + list(fred_indicators.keys()),
@@ -121,6 +127,8 @@ def fetch_fred_series(series_id, start_year, end_year):
 
         # Last available observation of each year
         year_end = df.groupby(df.index.year).last()
+
+        # Keep requested range
         year_end = year_end.loc[start_year:end_year]
 
         return year_end

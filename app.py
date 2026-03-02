@@ -35,7 +35,7 @@ if end_year < start_year:
     st.stop()
 
 # ------------------------------------------------
-# WEO Indicators (VALID WEO SERIES)
+# Indicators
 # ------------------------------------------------
 imf_indicators = {
     "Brent Oil ($/bbl)": "G001.POILBRE.A",
@@ -51,12 +51,12 @@ fred_indicators = {
 
 selected_indicators = st.multiselect(
     "Select Indicators",
-    list(indicators.keys()) + list(fred_indicators.keys()),
-    default=["World Real GDP Growth (%)"]
+    list(imf_indicators.keys()) + list(fred_indicators.keys()),
+    default=["Brent Oil ($/bbl)"]
 )
 
 # ------------------------------------------------
-# IMF Client (WEO via IMF_DATA)
+# IMF Client
 # ------------------------------------------------
 @st.cache_resource
 def get_imf_client():
@@ -119,6 +119,7 @@ def fetch_fred_series(series_id, start_year, end_year):
 
         df.index = pd.to_datetime(df.index)
 
+        # Last available observation of each year
         year_end = df.groupby(df.index.year).last()
         year_end = year_end.loc[start_year:end_year]
 
@@ -137,8 +138,8 @@ if selected_indicators:
 
     for name in selected_indicators:
 
-        if name in indicators:
-            series = fetch_imf_series(indicators[name], start_year, end_year)
+        if name in imf_indicators:
+            series = fetch_imf_series(imf_indicators[name], start_year, end_year)
 
         elif name in fred_indicators:
             series = fetch_fred_series(fred_indicators[name], start_year, end_year)
@@ -158,7 +159,7 @@ if selected_indicators:
 
         st.success(f"Time Series from {start_year} to {end_year}")
 
-        st.dataframe(combined_df, width="stretch")
+        st.dataframe(combined_df, use_container_width=True)
 
         st.subheader("📈 Time Series Chart")
         st.line_chart(combined_df)

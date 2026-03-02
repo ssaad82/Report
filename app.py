@@ -37,11 +37,12 @@ if end_year < start_year:
 # ------------------------------------------------
 # WEO Indicators (VALID WEO SERIES)
 # ------------------------------------------------
-indicators = {
-    "World Real GDP Growth (%)": "WLD.NGDP_RPCH",
-    "World CPI Inflation (%)": "WLD.PCPIPCH",
-    "World Nominal GDP (USD bn)": "WLD.NGDPD",
-    "Current Account (% GDP)": "WLD.BCA_NGDPD"
+imf_indicators = {
+    "Brent Oil ($/bbl)": "G001.POILBRE.A",
+    "LNG Asia ($/MMBtu)": "G001.PNGASJP.A",
+    "Wheat ($/MT)": "G001.PWHEAMT.A",
+    "Food Price Index": "G001.PFOODW.A",
+    "Food & Beverage Index": "G001.PFANDBW.A"
 }
 
 fred_indicators = {

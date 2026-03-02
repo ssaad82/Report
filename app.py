@@ -5,13 +5,13 @@ from fredapi import Fred
 
 st.set_page_config(page_title="Global Macro Dashboard", layout="wide")
 
-st.title("🌍 Global Macro Dashboard (IMF WEO + FRED)")
-st.caption("Source: IMF World Economic Outlook (WEO) & FRED (Federal Reserve H.15)")
+st.title("🌍 Global Macro Dashboard (IMF Commodities + FRED)")
+st.caption("Source: IMF Primary Commodity Prices (PCPS) & FRED")
 
 # -------------------------
 # 🔐 FRED API
 # -------------------------
-# For production use:
+# For production:
 # FRED_API_KEY = st.secrets["FRED_API_KEY"]
 FRED_API_KEY = "YOUR_FRED_API_KEY"
 
@@ -19,47 +19,30 @@ FRED_API_KEY = "YOUR_FRED_API_KEY"
 def get_fred_client():
     return Fred(api_key=FRED_API_KEY)
 
-
 # -------------------------
-# ---- Year Range ----
+# Year Range
 # -------------------------
 col1, col2 = st.columns(2)
 
 with col1:
-    start_year = st.number_input(
-        "Start Year",
-        min_value=1980,
-        max_value=2030,
-        value=2015,
-        step=1
-    )
+    start_year = st.number_input("Start Year", 1980, 2030, 2015)
 
 with col2:
-    end_year = st.number_input(
-        "End Year",
-        min_value=1980,
-        max_value=2030,
-        value=2025,
-        step=1
-    )
+    end_year = st.number_input("End Year", 1980, 2030, 2025)
 
 if end_year < start_year:
     st.error("End year must be greater than Start year.")
     st.stop()
 
-
 # -------------------------
-# ---- Indicators ----
+# IMF Commodity Indicators (PCPS DATAFLOW)
 # -------------------------
-# WEO key format:
-# REF_AREA.SUBJECT.MEASURE
-
 imf_indicators = {
-    "Brent Oil ($/bbl)": "WLD.POILBRE.IX",
-    "LNG Asia ($/MMBtu)": "WLD.PNGAS.IX",
-    "Food & Beverage Index": "WLD.PFANDBW.IX",
-    "Food Price Index": "WLD.PFOODW.IX",
-    "Wheat ($/MT)": "WLD.PWHEAMT.IX"
+    "Brent Oil ($/bbl)": "G001.POILBRE.A",
+    "LNG Asia ($/MMBtu)": "G001.PNGASJP.A",
+    "Wheat ($/MT)": "G001.PWHEAMT.A",
+    "Food Price Index": "G001.PFOODW.A",
+    "Food & Beverage Index": "G001.PFANDBW.A"
 }
 
 fred_indicators = {
@@ -69,9 +52,8 @@ fred_indicators = {
 selected_indicators = st.multiselect(
     "Select Indicators",
     options=list(imf_indicators.keys()) + list(fred_indicators.keys()),
-    default=["Effective Fed Funds Rate (Year-End, DFF %)"]
+    default=["Brent Oil ($/bbl)"]
 )
-
 
 # -------------------------
 # IMF Client
@@ -80,9 +62,8 @@ selected_indicators = st.multiselect(
 def get_imf_client():
     return sdmx.Client("IMF")
 
-
 # -------------------------
-# Fetch IMF Data (WEO Annual)
+# Fetch IMF Commodity Data
 # -------------------------
 @st.cache_data
 def fetch_imf_series(key, start_year, end_year):
@@ -91,7 +72,7 @@ def fetch_imf_series(key, start_year, end_year):
 
     try:
         data_msg = IMF.data(
-            resource_id="WEO",
+            resource_id="PCPS",  # IMPORTANT CHANGE
             key=key,
             params={
                 "startPeriod": str(start_year),
@@ -104,12 +85,10 @@ def fetch_imf_series(key, start_year, end_year):
         if df is None or len(df) == 0:
             return None
 
-        # Handle multi-index
         if isinstance(df.index, pd.MultiIndex):
             df.index = df.index.get_level_values("TIME_PERIOD")
 
         df = df.squeeze()
-
         df.index = pd.to_numeric(df.index, errors="coerce")
         df = df.dropna()
         df.index = df.index.astype(int)
@@ -121,9 +100,8 @@ def fetch_imf_series(key, start_year, end_year):
         st.error(f"IMF Error: {e}")
         return None
 
-
 # -------------------------
-# Fetch FRED Data (Year-End Value)
+# Fetch FRED Data
 # -------------------------
 @st.cache_data
 def fetch_fred_series(series_id, start_year, end_year):
@@ -138,8 +116,6 @@ def fetch_fred_series(series_id, start_year, end_year):
         )
 
         df = df.to_frame(name="value")
-
-        # Take last observation of each year
         df_year_end = df.resample("YE").last()
         df_year_end.index = df_year_end.index.year
 
@@ -148,7 +124,6 @@ def fetch_fred_series(series_id, start_year, end_year):
     except Exception as e:
         st.error(f"FRED Error: {e}")
         return None
-
 
 # -------------------------
 # Main Logic
@@ -182,7 +157,7 @@ if selected_indicators:
 
         st.success(f"Time Series from {start_year} to {end_year}")
 
-        st.dataframe(combined_df, use_container_width=True)
+        st.dataframe(combined_df, width="stretch")
 
         st.subheader("📈 Time Series Chart")
         st.line_chart(combined_df)
@@ -200,4 +175,4 @@ if selected_indicators:
         st.warning("No data returned. Check dataset or years.")
 
 else:
-    st.info("Select at least one indicator to display data.")
+    st.info("Select at least one indicator.")

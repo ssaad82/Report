@@ -111,7 +111,7 @@ def fetch_imf_series(full_key, start_year, end_year):
 
 
 # -------------------------
-# Fetch FRED Data
+# Fetch FRED Data (Exact Date)
 # -------------------------
 @st.cache_data
 def fetch_fred_series(series_id, start_year, end_year):
@@ -119,22 +119,39 @@ def fetch_fred_series(series_id, start_year, end_year):
     fred = get_fred_client()
 
     try:
-        df = fred.get_series(
-            series_id,
-            observation_start=f"{start_year}-01-01",
-            observation_end=f"{end_year}-12-31"
-        )
+        # If Effective Fed Funds Rate selected,
+        # get value specifically on 31 December of end_year
+        if series_id == "EFFR":
+            target_date = f"{end_year}-12-31"
 
-        # Convert daily to yearly average
-        df = df.resample("Y").mean()
-        df.index = df.index.year
+            value = fred.get_series(
+                series_id,
+                observation_start=target_date,
+                observation_end=target_date
+            )
 
-        return df
+            if value.empty:
+                st.warning(f"No data available on {target_date}")
+                return None
+
+            value.index = [end_year]  # show as year in table
+            return value
+
+        else:
+            # keep annual logic for other FRED series (if any)
+            df = fred.get_series(
+                series_id,
+                observation_start=f"{start_year}-01-01",
+                observation_end=f"{end_year}-12-31"
+            )
+
+            df = df.resample("Y").mean()
+            df.index = df.index.year
+            return df
 
     except Exception as e:
         st.error(f"FRED Error: {e}")
         return None
-
 
 # -------------------------
 # Main Logic

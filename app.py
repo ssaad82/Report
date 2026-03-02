@@ -6,52 +6,64 @@ from fredapi import Fred
 st.set_page_config(page_title="Global Macro Dashboard", layout="wide")
 
 st.title("🌍 Global Macro Dashboard (IMF WEO + FRED)")
-st.caption("Source: IMF WEO & FRED (Federal Reserve)")
+st.caption("Source: IMF WEO & FRED")
 
-# -------------------------
-# Fetch FRED Data (Year-End Value)
-# -------------------------
-@st.cache_data
-def fetch_fred_series(series_id, start_year, end_year):
+# ------------------------------------------------
+# 🔐 FRED API
+# ------------------------------------------------
+# For production:
+# FRED_API_KEY = st.secrets["FRED_API_KEY"]
+FRED_API_KEY = "YOUR_FRED_API_KEY"
 
-    fred = get_fred_client()
+@st.cache_resource
+def get_fred_client():
+    return Fred(api_key=FRED_API_KEY)
 
-    try:
-        df = fred.get_series(
-            series_id,
-            observation_start=f"{start_year}-01-01",
-            observation_end=f"{end_year}-12-31"
-        )
+# ------------------------------------------------
+# Year Selection
+# ------------------------------------------------
+col1, col2 = st.columns(2)
 
-        if df.empty:
-            return None
+with col1:
+    start_year = st.number_input("Start Year", 1980, 2030, 2015)
 
-        # Ensure datetime index
-        df.index = pd.to_datetime(df.index)
+with col2:
+    end_year = st.number_input("End Year", 1980, 2030, 2025)
 
-        # Get last available observation of each year
-        year_end_values = df.groupby(df.index.year).last()
+if end_year < start_year:
+    st.error("End year must be greater than Start year.")
+    st.stop()
 
-        # Keep only requested range
-        year_end_values = year_end_values.loc[start_year:end_year]
+# ------------------------------------------------
+# WEO Indicators (VALID WEO SERIES)
+# ------------------------------------------------
+indicators = {
+    "World Real GDP Growth (%)": "WLD.NGDP_RPCH",
+    "World CPI Inflation (%)": "WLD.PCPIPCH",
+    "World Nominal GDP (USD bn)": "WLD.NGDPD",
+    "Current Account (% GDP)": "WLD.BCA_NGDPD"
+}
 
-        return year_end_values
+fred_indicators = {
+    "Effective Fed Funds Rate (Year-End, DFF %)": "DFF"
+}
 
-    except Exception as e:
-        st.error(f"FRED Error: {e}")
-        return None
+selected_indicators = st.multiselect(
+    "Select Indicators",
+    list(indicators.keys()) + list(fred_indicators.keys()),
+    default=["World Real GDP Growth (%)"]
+)
 
-# -------------------------
-# IMF Client
-# -------------------------
+# ------------------------------------------------
+# IMF Client (WEO via IMF_DATA)
+# ------------------------------------------------
 @st.cache_resource
 def get_imf_client():
     return sdmx.Client("IMF_DATA")
 
-
-# -------------------------
-# Fetch IMF Data
-# -------------------------
+# ------------------------------------------------
+# Fetch IMF WEO Data
+# ------------------------------------------------
 @st.cache_data
 def fetch_imf_series(full_key, start_year, end_year):
 
@@ -67,8 +79,7 @@ def fetch_imf_series(full_key, start_year, end_year):
             }
         )
 
-        dataset = data_msg.data[0]
-        df = sdmx.to_pandas(dataset)
+        df = sdmx.to_pandas(data_msg)
 
         if df is None or len(df) == 0:
             return None
@@ -76,65 +87,49 @@ def fetch_imf_series(full_key, start_year, end_year):
         if isinstance(df.index, pd.MultiIndex):
             df.index = df.index.get_level_values("TIME_PERIOD")
 
-        if isinstance(df, pd.DataFrame):
-            df = df.squeeze()
-
+        df = df.squeeze()
+        df.index = pd.to_numeric(df.index)
+        df = df.dropna()
         df.index = df.index.astype(int)
-        df = df.sort_index()
 
-        return df
+        return df.sort_index()
 
     except Exception as e:
         st.error(f"IMF Error: {e}")
         return None
 
-
-# -------------------------
-# Fetch FRED Data (Exact Date)
-# -------------------------
+# ------------------------------------------------
+# Fetch FRED Data (Year-End Value)
+# ------------------------------------------------
 @st.cache_data
 def fetch_fred_series(series_id, start_year, end_year):
 
     fred = get_fred_client()
 
     try:
-        # If Effective Fed Funds Rate selected,
-        # get value specifically on 31 December of end_year
-        if series_id == "EFFR":
-            target_date = f"{end_year}-12-31"
+        df = fred.get_series(
+            series_id,
+            observation_start=f"{start_year}-01-01",
+            observation_end=f"{end_year}-12-31"
+        )
 
-            value = fred.get_series(
-                series_id,
-                observation_start=target_date,
-                observation_end=target_date
-            )
+        if df.empty:
+            return None
 
-            if value.empty:
-                st.warning(f"No data available on {target_date}")
-                return None
+        df.index = pd.to_datetime(df.index)
 
-            value.index = [end_year]  # show as year in table
-            return value
+        year_end = df.groupby(df.index.year).last()
+        year_end = year_end.loc[start_year:end_year]
 
-        else:
-            # keep annual logic for other FRED series (if any)
-            df = fred.get_series(
-                series_id,
-                observation_start=f"{start_year}-01-01",
-                observation_end=f"{end_year}-12-31"
-            )
-
-            df = df.resample("Y").mean()
-            df.index = df.index.year
-            return df
+        return year_end
 
     except Exception as e:
         st.error(f"FRED Error: {e}")
         return None
 
-# -------------------------
+# ------------------------------------------------
 # Main Logic
-# -------------------------
+# ------------------------------------------------
 if selected_indicators:
 
     combined_df = pd.DataFrame()
@@ -142,15 +137,19 @@ if selected_indicators:
     for name in selected_indicators:
 
         if name in indicators:
-            full_key = indicators[name]
-            series = fetch_imf_series(full_key, start_year, end_year)
+            series = fetch_imf_series(indicators[name], start_year, end_year)
 
         elif name in fred_indicators:
-            series_id = fred_indicators[name]
-            series = fetch_fred_series(series_id, start_year, end_year)
+            series = fetch_fred_series(fred_indicators[name], start_year, end_year)
+
+        else:
+            series = None
 
         if series is not None:
-            combined_df[name] = series
+            combined_df = pd.concat(
+                [combined_df, series.rename(name)],
+                axis=1
+            )
 
     if not combined_df.empty:
 
@@ -158,22 +157,20 @@ if selected_indicators:
 
         st.success(f"Time Series from {start_year} to {end_year}")
 
-        st.dataframe(combined_df, use_container_width=True)
+        st.dataframe(combined_df, width="stretch")
 
         st.subheader("📈 Time Series Chart")
         st.line_chart(combined_df)
 
-        csv = combined_df.to_csv().encode("utf-8")
-
         st.download_button(
-            label="📥 Download Data as CSV",
-            data=csv,
+            "📥 Download CSV",
+            combined_df.to_csv().encode("utf-8"),
             file_name=f"Macro_data_{start_year}_{end_year}.csv",
             mime="text/csv"
         )
 
     else:
-        st.warning("No data returned. Check dataset or years.")
+        st.warning("No data returned.")
 
 else:
-    st.info("Select at least one indicator to display data.")
+    st.info("Select at least one indicator.")

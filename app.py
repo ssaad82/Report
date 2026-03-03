@@ -15,7 +15,8 @@ st.caption("Source: IMF WEO, FRED & ECB")
 # ------------------------------------------------
 # 🔐 FRED API
 # ------------------------------------------------
-FRED_API_KEY = 5a92fd06d14b346c789c0e4426aa3592
+
+FRED_API_KEY = st.secrets["5a92fd06d14b346c789c0e4426aa3592"]
 
 @st.cache_resource
 def get_fred_client():

@@ -2,20 +2,19 @@ import streamlit as st
 import sdmx
 import pandas as pd
 from fredapi import Fred
+import requests
 
 # ------------------------------------------------
 # Page Config
 # ------------------------------------------------
 st.set_page_config(page_title="Global Macro Dashboard", layout="wide")
 
-st.title("🌍 Global Macro Dashboard (IMF WEO + FRED)")
-st.caption("Source: IMF WEO & FRED")
+st.title("🌍 Global Macro Dashboard (IMF WEO + FRED + ECB)")
+st.caption("Source: IMF WEO, FRED & ECB")
 
 # ------------------------------------------------
 # 🔐 FRED API
 # ------------------------------------------------
-# For production use:
-# FRED_API_KEY = st.secrets["FRED_API_KEY"]
 FRED_API_KEY = "5a92fd06d14b346c789c0e4426aa3592"
 
 @st.cache_resource
@@ -38,7 +37,7 @@ if end_year < start_year:
     st.stop()
 
 # ------------------------------------------------
-# Indicators (DEFINE BEFORE USE)
+# Indicators
 # ------------------------------------------------
 imf_indicators = {
     "Brent Oil ($/bbl)": "G001.POILBRE.A",
@@ -52,12 +51,18 @@ fred_indicators = {
     "Effective Fed Funds Rate (Year-End, DFF %)": "DFF"
 }
 
+ecb_indicators = {
+    "ECB Main Refinancing Operations Rate (Annual Avg %)": "ECB_MRO"
+}
+
 # ------------------------------------------------
 # Indicator Selection
 # ------------------------------------------------
 selected_indicators = st.multiselect(
     "Select Indicators",
-    list(imf_indicators.keys()) + list(fred_indicators.keys()),
+    list(imf_indicators.keys()) +
+    list(fred_indicators.keys()) +
+    list(ecb_indicators.keys()),
     default=["Brent Oil ($/bbl)"]
 )
 
@@ -125,16 +130,68 @@ def fetch_fred_series(series_id, start_year, end_year):
 
         df.index = pd.to_datetime(df.index)
 
-        # Last available observation of each year
         year_end = df.groupby(df.index.year).last()
-
-        # Keep requested range
         year_end = year_end.loc[start_year:end_year]
 
         return year_end
 
     except Exception as e:
         st.error(f"FRED Error: {e}")
+        return None
+
+# ------------------------------------------------
+# Fetch ECB MRO Rate (Annual Average)
+# ------------------------------------------------
+@st.cache_data
+def fetch_ecb_mro(start_year, end_year):
+
+    try:
+        base_url = "https://data-api.ecb.europa.eu/service/data"
+        dataset = "FM"
+        key = "D.U2.MRR_FR.LEV"
+
+        url = f"{base_url}/{dataset}/{key}"
+
+        params = {
+            "startPeriod": f"{start_year}-01-01",
+            "endPeriod": f"{end_year}-12-31"
+        }
+
+        response = requests.get(
+            url,
+            params=params,
+            headers={"Accept": "application/json"}
+        )
+
+        if response.status_code != 200:
+            st.error(f"ECB API Error: {response.status_code}")
+            return None
+
+        data = response.json()
+
+        series = list(data["dataSets"][0]["series"].values())[0]["observations"]
+        time_periods = data["structure"]["dimensions"]["observation"][0]["values"]
+
+        dates = []
+        values = []
+
+        for idx, val in series.items():
+            dates.append(time_periods[int(idx)]["id"])
+            values.append(val[0])
+
+        df = pd.DataFrame({
+            "Date": pd.to_datetime(dates),
+            "Value": values
+        })
+
+        df["Year"] = df["Date"].dt.year
+
+        annual_avg = df.groupby("Year")["Value"].mean()
+
+        return annual_avg.loc[start_year:end_year]
+
+    except Exception as e:
+        st.error(f"ECB Error: {e}")
         return None
 
 # ------------------------------------------------
@@ -151,6 +208,9 @@ if selected_indicators:
 
         elif name in fred_indicators:
             series = fetch_fred_series(fred_indicators[name], start_year, end_year)
+
+        elif name in ecb_indicators:
+            series = fetch_ecb_mro(start_year, end_year)
 
         else:
             series = None

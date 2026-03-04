@@ -15,8 +15,11 @@ st.caption("Source: IMF WEO, FRED & ECB")
 # ------------------------------------------------
 # 🔐 FRED API
 # ------------------------------------------------
+FRED_API_KEY = st.secrets.get("FRED_API_KEY")
 
-FRED_API_KEY = st.secrets["5a92fd06d14b346c789c0e4426aa3592"]
+if FRED_API_KEY is None:
+    st.error("FRED API key missing. Please add it in Streamlit Secrets.")
+    st.stop()
 
 @st.cache_resource
 def get_fred_client():
@@ -61,9 +64,9 @@ ecb_indicators = {
 # ------------------------------------------------
 selected_indicators = st.multiselect(
     "Select Indicators",
-    list(imf_indicators.keys()) +
-    list(fred_indicators.keys()) +
-    list(ecb_indicators.keys()),
+    list(imf_indicators.keys())
+    + list(fred_indicators.keys())
+    + list(ecb_indicators.keys()),
     default=["Brent Oil ($/bbl)"]
 )
 

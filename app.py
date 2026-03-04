@@ -150,31 +150,38 @@ def fetch_fred_series(series_id, start_year, end_year):
 def fetch_ecb_mro(start_year, end_year):
 
     try:
-        ECB = get_ecb_client()
+        url = "https://data-api.ecb.europa.eu/service/data/FM/M.U2.EUR.4F.KR.MRR_FR.LEV"
 
-        data_msg = ECB.data(
-            resource_id="FM",
-            key="M.U2.EUR.4F.KR.MRR_RT.LEV",
-            params={
-                "startPeriod": f"{start_year}-01",
-                "endPeriod": f"{end_year}-12"
-            }
+        params = {
+            "startPeriod": str(start_year),
+            "endPeriod": str(end_year),
+            "format": "jsondata"
+        }
+
+        response = requests.get(
+            url,
+            params=params,
+            headers={"Accept": "application/vnd.sdmx.data+json"}
         )
 
-        df = sdmx.to_pandas(data_msg)
-
-        if df is None or len(df) == 0:
+        if response.status_code != 200:
+            st.error(f"ECB API Error: {response.status_code}")
             return None
 
-        if isinstance(df.index, pd.MultiIndex):
-            df.index = df.index.get_level_values("TIME_PERIOD")
+        data = response.json()
 
-        df.index = pd.to_datetime(df.index)
+        series = list(data["dataSets"][0]["series"].values())[0]["observations"]
+        time_periods = data["structure"]["dimensions"]["observation"][0]["values"]
 
-        df = df.rename("Value")
+        years = []
+        values = []
 
-        # annual average
-        df = df.groupby(df.index.year).mean()
+        for idx, val in series.items():
+            years.append(int(time_periods[int(idx)]["id"][:4]))
+            values.append(val[0])
+
+        df = pd.Series(values, index=years)
+        df = df.groupby(df.index).mean()
 
         return df.loc[start_year:end_year]
 

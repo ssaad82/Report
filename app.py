@@ -147,14 +147,11 @@ def fetch_fred_series(series_id, start_year, end_year):
 # Fetch ECB MRO Rate (Annual Average)
 # ------------------------------------------------
 @st.cache_data
+@st.cache_data
 def fetch_ecb_mro(start_year, end_year):
 
     try:
-        base_url = "https://data-api.ecb.europa.eu/service/data"
-        dataset = "FM"
-        key = "M.U2.EUR.4F.KR.MRR_FR.LEV"
-
-        url = f"{base_url}/{dataset}/{key}"
+        url = "https://data-api.ecb.europa.eu/service/data/FM/M.U2.EUR.4F.KR.MRR_FR.LEV"
 
         params = {
             "startPeriod": f"{start_year}-01-01",

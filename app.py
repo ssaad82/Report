@@ -152,7 +152,7 @@ def fetch_ecb_mro(start_year, end_year):
     try:
         base_url = "https://data-api.ecb.europa.eu/service/data"
         dataset = "FM"
-        key = "M.U2.EUR.4F.KR.MRR_FR.LEV""
+        key = "M.U2.EUR.4F.KR.MRR_FR.LEV"
 
         url = f"{base_url}/{dataset}/{key}"
 

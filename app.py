@@ -164,7 +164,7 @@ def fetch_ecb_mro(start_year, end_year):
         response = requests.get(
             url,
             params=params,
-            headers={"Accept": "application/json"}
+            headers={"Accept": "application/vnd.sdmx.data+json"}
         )
 
         if response.status_code != 200:

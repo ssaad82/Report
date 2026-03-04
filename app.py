@@ -146,50 +146,40 @@ def fetch_fred_series(series_id, start_year, end_year):
 # ------------------------------------------------
 # Fetch ECB MRO Rate (Annual Average)
 # ------------------------------------------------
-@st.cache_data
+@st.cache_resource
+def get_ecb_client():
+    return sdmx.Client("ECB")
+
 @st.cache_data
 def fetch_ecb_mro(start_year, end_year):
 
     try:
-        url = "https://data-api.ecb.europa.eu/service/data/FM/M.U2.EUR.4F.KR.MRR_FR.LEV"
+        ECB = get_ecb_client()
 
-        params = {
-            "startPeriod": f"{start_year}-01-01",
-            "endPeriod": f"{end_year}-12-31"
-        }
-
-        response = requests.get(
-            url,
-            params=params,
-            headers={"Accept": "application/vnd.sdmx.data+json"}
+        data_msg = ECB.data(
+            resource_id="FM",
+            key="M.U2.EUR.4F.KR.MRR_FR.LEV",
+            params={
+                "startPeriod": f"{start_year}-01",
+                "endPeriod": f"{end_year}-12"
+            }
         )
 
-        if response.status_code != 200:
-            st.error(f"ECB API Error: {response.status_code}")
+        df = sdmx.to_pandas(data_msg)
+
+        if df is None or len(df) == 0:
             return None
 
-        data = response.json()
+        if isinstance(df.index, pd.MultiIndex):
+            df.index = df.index.get_level_values("TIME_PERIOD")
 
-        series = list(data["dataSets"][0]["series"].values())[0]["observations"]
-        time_periods = data["structure"]["dimensions"]["observation"][0]["values"]
+        df.index = pd.to_datetime(df.index)
 
-        dates = []
-        values = []
+        df = df.rename("Value")
 
-        for idx, val in series.items():
-            dates.append(time_periods[int(idx)]["id"])
-            values.append(val[0])
+        df = df.groupby(df.index.year).mean()
 
-        df = pd.DataFrame({
-            "Date": pd.to_datetime(dates),
-            "Value": values
-        })
-
-        df["Year"] = df["Date"].dt.year
-
-        annual_avg = df.groupby("Year")["Value"].mean()
-
-        return annual_avg.loc[start_year:end_year]
+        return df.loc[start_year:end_year]
 
     except Exception as e:
         st.error(f"ECB Error: {e}")

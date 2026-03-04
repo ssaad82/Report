@@ -146,10 +146,6 @@ def fetch_fred_series(series_id, start_year, end_year):
 # ------------------------------------------------
 # Fetch ECB MRO Rate (Annual Average)
 # ------------------------------------------------
-@st.cache_resource
-def get_ecb_client():
-    return sdmx.Client("ECB")
-
 @st.cache_data
 def fetch_ecb_mro(start_year, end_year):
 
@@ -158,7 +154,7 @@ def fetch_ecb_mro(start_year, end_year):
 
         data_msg = ECB.data(
             resource_id="FM",
-            key="M.U2.EUR.4F.KR.MRR_FR.LEV",
+            key="M.U2.EUR.4F.KR.MRR_RT.LEV",
             params={
                 "startPeriod": f"{start_year}-01",
                 "endPeriod": f"{end_year}-12"
@@ -177,6 +173,7 @@ def fetch_ecb_mro(start_year, end_year):
 
         df = df.rename("Value")
 
+        # annual average
         df = df.groupby(df.index.year).mean()
 
         return df.loc[start_year:end_year]
@@ -184,7 +181,6 @@ def fetch_ecb_mro(start_year, end_year):
     except Exception as e:
         st.error(f"ECB Error: {e}")
         return None
-
 # ------------------------------------------------
 # Main Logic
 # ------------------------------------------------
